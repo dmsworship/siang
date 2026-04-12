@@ -125,7 +125,7 @@ async function startBot() {
             for (let t of targets) {
 
                 const ok = await sendWithRetry(sock, t, {
-                    text: 'Kabarnya gimana kamuP'
+                    text: 'siang siang makan nasi makasih sayangP'
                 });
 
                 if (ok) console.log(`[OK] ${t}`);
