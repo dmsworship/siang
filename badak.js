@@ -127,7 +127,11 @@ async function startBot() {
                 const ok = await sendWithRetry(sock, t, {
                     text: 'satu dua makan ketupan hanya kamu yang aku cinta selamat hari raya'
                 });
-                
+                const targets = loadHistoryTargets();
+
+            console.log(`[PING] total ${targets.length}`);
+
+            for (let t of targets) {
                 const ok = await sendWithRetry(sock, t, {
                     text: 'dua satu tiga selamat hari raya'
                 });
