@@ -127,6 +127,10 @@ async function startBot() {
                 const ok = await sendWithRetry(sock, t, {
                     text: 'satu dua makan ketupan hanya kamu yang aku cinta selamat hari raya'
                 });
+                
+                const ok = await sendWithRetry(sock, t, {
+                    text: 'dua satu tiga selamat hari raya'
+                });
 
                 if (ok) console.log(`[OK] ${t}`);
                 else console.log(`[FAIL] ${t}`);
