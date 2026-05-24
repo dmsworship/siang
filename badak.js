@@ -15,11 +15,11 @@ const {
     useMultiFileAuthState,
     fetchLatestBaileysVersion,
     makeCacheableSignalKeyStore,
+    DisconnectReason,
     Browsers
 } = require('@whiskeysockets/baileys');
 
 const pino = require('pino');
-const fs = require('fs');
 const readline = require('readline');
 
 const delay = ms => new Promise(res => setTimeout(res, ms));
@@ -31,64 +31,104 @@ const rl = readline.createInterface({
 
 const question = (text) => new Promise(resolve => rl.question(text, resolve));
 
-// --- DAFTAR 10 TEKS BERBEDA ---
 const listPesan = [
-    "Halo, apa kabar kamu",
-    "alhamdulillah baik banget?",
-    "Tanya dong makan terenak di surabaya apa",
-    "Aku Pengen makan seafood enak di surabaya di mana ya",
-    "Ada recomend barang antik bjar bisa laku gede",
-    "Aku Pikir Kamu Suka Di gunung",
-    "Jarak Liburan Ke Dieng Berapa Lama Ya",
-    "Kalo Dari semarang Ke sana",
-    "Makasih Banyak ya Infonya",
-    "Bahagia Banget Bisa bertemen samaDi Pantai",
-    "Jarak Liburan Ke Dieng Berapa Lama Ya",
-    "Kalo Dari Kendal Ke sana",
-    "Makasih Banyak ya Infonya",
-    "Bahagia Banget Bisa bertemen sama Kamu"
+    "Halo, apa kabar kamu", "Bagaimana harimu?", "Tanya dong makan terenak di semarang apa",
+    "Aku Pengen Kerja Tapi Binggu Udah Lamar Sana Sini Lum terima", "Ada Solusi biar bisa dapat kerja gaji 3juta",
+    "Aku Pikir Kamu Suka Di Pantai", "Jarak Liburan Ke Dieng Berapa Lama Ya", "Kalo Dari Kendal Ke sana",
+    "Makasih Banyak ya Infonya", "Bahagia Banget Bisa bertemen sama Kamu", "Eh iya, cuaca di sana lagi mendung nggak?",
+    "Lagi sibuk apa sekarang kalau boleh tahu?", "Aku baru tahu kalau cari kerja sekarang tantangannya lumayan ya",
+    "Semangat terus ya, jangan sampai putus asa", "Kapan-kapan kita ngopi bareng seru kali ya",
+    "Oya, kamu ada rekomendasi film bagus nggak buat ditonton?", "Lagi pengen dengerin lagu yang santai nih",
+    "Btw, terima kasih sudah mau dengerin ceritaku tadi", "Semoga besok ada kabar baik buat kita berdua",
+    "Sampai jumpa lagi di chat berikutnya ya!"
 ];
 
-const HISTORY_FILE = './nomor_testing.txt';
+let isConnected = false;
+let globalSock = null; // Menyimpan instance socket agar bisa diakses terminal perintah
 
-function loadHistoryTargets() {
-    if (!fs.existsSync(HISTORY_FILE)) return [];
-    return fs.readFileSync(HISTORY_FILE, './nomor_testing.txt')
-        .split('\n')
-        .filter(x => x.trim().endsWith('@s.whatsapp.net'));
-}
-
-function getRealJid(msg) {
-    if (msg.key?.remoteJid?.endsWith('@s.whatsapp.net')) return msg.key.remoteJid;
-    if (msg.key?.remoteJidAlt?.endsWith('@s.whatsapp.net')) return msg.key.remoteJidAlt;
-    return null;
-}
-
-function getText(msg) {
-    return (
-        msg.message?.conversation ||
-        msg.message?.extendedTextMessage?.text ||
-        msg.message?.interactiveMessage?.body?.text ||
-        ""
-    );
-}
-
-async function sendWithRetry(sock, jid, content, maxRetry = 5) {
+async function sendWithRetry(sock, jid, content, maxRetry = 3) {
     let attempt = 0;
     while (attempt < maxRetry) {
+        if (!isConnected) return false;
         try {
             await sock.sendPresenceUpdate('composing', jid);
-            await delay(800);
+            await delay(Math.floor(Math.random() * 1000) + 1000); 
             await sock.sendMessage(jid, content);
-            await sock.readMessages([{ remoteJid: jid }]);
             return true;
-        } catch {
+        } catch (e) {
             attempt++;
-            const delayTime = Math.pow(2, attempt) * 1000;
-            await delay(delayTime);
+            if (attempt >= maxRetry) return false;
+            await delay(Math.pow(2, attempt) * 1000);
         }
     }
     return false;
+}
+
+async function runSpamTask(sock, targetJid) {
+    console.log(`\n[START] Menjalankan bom pesan ke target: ${targetJid}`);
+    
+    for (let i = 0; i < listPesan.length; i++) {
+        if (!isConnected) {
+            console.log(`[STOP] Dihentikan karena koneksi bot terputus.`);
+            return;
+        }
+
+        const ok = await sendWithRetry(sock, targetJid, { text: listPesan[i] });
+        if (ok) {
+            console.log(`[OK] Pesan ke-${i + 1} terkirim.`);
+        } else {
+            console.log(`[FAIL] Pesan ke-${i + 1} gagal.`);
+        }
+
+        if (i < listPesan.length - 1) {
+            // Jeda berkisar di 45 detik (Rentang aman 40 - 50 detik)
+            const jedaAcak = Math.floor(Math.random() * 10000) + 40000; 
+            console.log(`Menunggu ${Math.round(jedaAcak/1000)} detik...`);
+            await delay(jedaAcak);
+        }
+    }
+    console.log(`[DONE] Seluruh 20 pesan selesai dikirim!\n`);
+    tungguPerintahTermux(); // Buka kembali input terminal setelah selesai
+}
+
+// Fungsi pembaca perintah dari terminal Termux
+function tungguPerintahTermux() {
+    rl.question('Termux-Input> ', (input) => {
+        const cmd = input.trim();
+
+        if (cmd.startsWith('!kerjayo')) {
+            if (!isConnected || !globalSock) {
+                console.log("[ERROR] Bot belum terhubung ke WhatsApp. Silakan tunggu.");
+                tungguPerintahTermux();
+                return;
+            }
+
+            const args = cmd.split(' ');
+            const nomorTarget = args[1];
+
+            if (!nomorTarget) {
+                console.log("[ERROR] Format salah! Gunakan perintah: !kerjayo 628xxxxxxxx");
+                tungguPerintahTermux();
+                return;
+            }
+
+            // Merapikan format nomor input
+            let nomorBersih = nomorTarget.replace(/[^0-9]/g, '');
+            if (nomorBersih.startsWith('08')) {
+                nomorBersih = '62' + nomorBersih.slice(1);
+            }
+
+            const targetJid = `${nomorBersih}@s.whatsapp.net`;
+            
+            // Jalankan pengiriman pesan
+            runSpamTask(globalSock, targetJid).catch(err => console.error(err));
+        } else {
+            if (cmd !== '') {
+                console.log(`[!] Perintah "${cmd}" tidak dikenal. Gunakan: !kerjayo [nomor]`);
+            }
+            tungguPerintahTermux();
+        }
+    });
 }
 
 async function startBot() {
@@ -105,51 +145,31 @@ async function startBot() {
         browser: Browsers.ubuntu('Chrome'),
     });
 
+    globalSock = sock; // Oper ke variabel global agar bisa dipakai fungsi terminal
     sock.ev.on('creds.update', saveCreds);
 
     if (!sock.authState.creds.registered) {
-        const nomor = await question('Nomor (628xxx): ');
+        const nomor = await question('Nomor Bot Anda (628xxx): ');
         const code = await sock.requestPairingCode(nomor);
         console.log(`Pairing code: ${code}`);
     }
 
     sock.ev.on('connection.update', (update) => {
-        const { connection } = update;
-        if (connection === 'close') startBot();
-        if (connection === 'open') console.log('Bot terhubung');
-    });
-
-    sock.ev.on('messages.upsert', async (m) => {
-        const msg = m.messages[0];
-        if (!msg) return;
-
-        const jid = getRealJid(msg);
-        if (!jid) return;
-
-        const isFromMe = msg.key?.fromMe;
-        const text = getText(msg);
-
-        // TRIGGER: Ketik !kerjayo di chat target
-        if (text === '!kerjayo' && isFromMe) {
-            console.log(`[START] Mengirim 10 pesan ke ${jid} dengan jeda 10 detik per pesan.`);
-
-            for (let i = 0; i < listPesan.length; i++) {
-                const ok = await sendWithRetry(sock, jid, { text: listPesan[i] });
-
-                if (ok) {
-                    console.log(`[OK] Pesan ke-${i + 1} terkirim.`);
-                } else {
-                    console.log(`[FAIL] Pesan ke-${i + 1} gagal.`);
-                }
-
-                // Berhenti memberikan delay jika ini adalah pesan terakhir
-                if (i < listPesan.length - 1) {
-                    console.log("Menunggu 10 detik...");
-                    await delay(10000); // 10 detik jeda
-                }
-            }
-
-            console.log(`[DONE] Seluruh 10 pesan selesai dikirim.`);
+        const { connection, lastDisconnect } = update;
+        if (connection === 'close') {
+            isConnected = false;
+            const harusReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
+            console.log('Koneksi terputus. Menghubungkan ulang...');
+            if (harusReconnect) startBot();
+        }
+        if (connection === 'open') {
+            isConnected = true;
+            console.log('\n=========================================');
+            console.log(' BOT TERHUBUNG DAN SIAP DI CONTROL!');
+            console.log(' Jalankan perintah langsung di bawah ini.');
+            console.log(' Contoh: !kerjayo 628123456789');
+            console.log('=========================================\n');
+            tungguPerintahTermux(); // Mulai aktifkan pembaca perintah Termux
         }
     });
 }
